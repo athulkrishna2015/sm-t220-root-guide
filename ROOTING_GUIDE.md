@@ -338,6 +338,18 @@ Removes the red "custom OS / unlocked bootloader" screen on boot.
 > ```
 > (Package name: `org.lsposed.manager`.)
 
+> ⚠️ **Magisk 31.1 SEPolicy issue:** LSPosed/Vector may show "Partially activated" + "SEPolicy is not loaded properly" because Magisk 31.1 does not apply module `sepolicy.rule` files at boot. Fix without reboot:
+> ```bash
+> adb shell 'su -c "magiskpolicy --live --apply /data/adb/modules/zygisk_lsposed/sepolicy.rule"'
+> # Persist across reboots:
+> adb shell 'su -c "cat > /data/adb/service.d/99_lsposed_sepolicy.sh <<EOF
+> #!/system/bin/sh
+> magiskpolicy --live --apply /data/adb/modules/zygisk_lsposed/sepolicy.rule
+> EOF
+> chmod 755 /data/adb/service.d/99_lsposed_sepolicy.sh"'
+> ```
+> Remove the service.d script if you uninstall the module.
+
 ---
 
 ## Recovery — Unbrick / Restore Stock
