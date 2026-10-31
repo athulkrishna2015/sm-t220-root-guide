@@ -327,6 +327,8 @@ Removes the red "custom OS / unlocked bootloader" screen on boot.
 
 1. Magisk settings → enable **Zygisk** and **Enforce DenyList** → configure DenyList (add Google Play Services if needed). Reboot to apply.
 2. Download LSPosed (zygisk build) from GitHub.
+   - LSPosed (original): https://github.com/LSPosed/LSPosed/releases (supports Android 8.1 ~ 14)
+   - **Vector (JingMatrix fork, recommended for Magisk 31.1+):** https://github.com/JingMatrix/LSPosed/releases (supports Android 8.1 ~ 16, handles SEPolicy correctly on newer Magisk)
 3. Copy the zip to the tablet.
 4. Magisk → **Modules** → **Install from storage** → select the zip → **Reboot**.
 5. Reboot; LSPosed adds a home-screen shortcut (package `org.lsposed.manager`).
