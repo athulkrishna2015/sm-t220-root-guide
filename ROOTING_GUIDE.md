@@ -309,6 +309,30 @@ Tick these off before you consider the device rooted:
 - [ ] Root survives a reboot (`adb shell su -c id` still works after reboot)
 - [ ] (Optional) `magisk -v` from a root shell returns `31.1:MAGISK:R`
 
+## Execution Results (this run)
+
+Actual run on **SM-T220 / Android 14 / T220XXSAEYE4 (INS)** with Magisk 31.1 on Linux.
+
+### What was already done
+- Bootloader was **already unlocked** (`ro.boot.verifiedbootstate = orange`, `ro.boot.flash.locked = 0`) — skipped Phase 3.
+- Firmware downloaded & extracted to `fw/extracted/` (`boot.img`, `vbmeta.img`, etc.).
+- Patched boot image already present: `magisk_patched-31100_Uuo1o.img` (matches build T220XXSAEYE4).
+
+### Steps completed
+1. **Flash patched boot** — `heimdall flash --boot magisk_patched-31100_Uuo1o.img` succeeded. First attempt hit `Protocol initialisation failed` (stale Download Mode session); forced power-off, re-entered Download Mode, flashed immediately — success.
+2. **Factory data reset** — tablet booted to Android Recovery ("Can't load Android system"); selected **Factory data reset**, let it wipe and reboot. First boot took ~10–15 min.
+3. **Install Magisk app** — `adb install Magisk-v31.1.apk` (saved to workspace as `Magisk-v31.1.apk`). Daemon started (`magiskd` running, `post-fs-data` + `service.d` scripts ran).
+4. **Grant root to ADB shell** — Magisk 31.1 defaults **all** new apps to **Deny** with no popup. Open Magisk → **Superuser** → **+** → grant **Shell** (adb). Then:
+   ```bash
+   adb shell su -c "id"
+   # → uid=0(root) gid=0(root) groups=0(root) context=u:r:magisk:s0
+   ```
+
+### Notes specific to this device
+- `su` lives at `/system_ext/bin/su` (symlink → `magisk`) and IS on `PATH`.
+- `/system_ext/bin/` is tmpfs-mounted by Magisk at boot (`magisk` rw overlay).
+- Verification: `magisk -v` → `31.1:MAGISK:R`, `magisk -c` → `31.1:MAGISK:R (31100)`.
+
 ## Optional — Remove Bootloader Warning
 
 Removes the red "custom OS / unlocked bootloader" screen on boot.

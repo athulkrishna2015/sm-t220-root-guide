@@ -1,0 +1,17 @@
+# Firmware downloads (large, re-downloadable via samloader)
+*.zip
+*.tar.md5
+
+# Temporary and log files
+*.tmp
+*.log
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
