@@ -1,0 +1,323 @@
+[SIZE=5][B]Rooting Samsung Galaxy Tab A7 Lite (SM-T220) on Linux — Magisk + heimdall, no Windows/Odin[/B][/SIZE]
+
+[SIZE=3][B]⚠️ Disclaimer:[/B] Rooting voids your warranty, trips the Knox counter (Samsung Pay / Secure Folder may stop working), and can brick your device if done incorrectly. Follow every step carefully and back up your data first. The author is not responsible for any damage.[/SIZE]
+
+A complete, Linux-native guide to unlocking the bootloader and rooting the Samsung Galaxy Tab A7 Lite (SM-T220) using [B]Magisk[/B] and [B]heimdall[/B], without needing Windows or Odin.
+
+[SIZE=4][B]Table of Contents[/B][/SIZE]
+[LIST]
+[*]Overview
+[*]Prerequisites
+[*]Device Info
+[*]Warnings
+[*]Phase 0 — Download Firmware
+[*]Phase 1 — Extract boot.img
+[*]Phase 2 — Patch boot.img with Magisk
+[*]Phase 3 — Unlock Bootloader
+[*]Phase 4 — Flash Patched Boot
+[*]Phase 5 — Verify Root
+[*]Optional — Remove Bootloader Warning
+[*]Optional — LSPosed / Zygisk
+[*]Recovery — Unbrick / Restore Stock
+[*]Field Notes (actual run)
+[*]Troubleshooting
+[*]FAQ
+[*]Credits
+[/LIST]
+
+[SIZE=4][B]Overview[/B][/SIZE]
+This guide covers the full root flow on a Linux PC:
+[LIST=1]
+[*]Download official Samsung firmware (via samloader-rs).
+[*]Extract and patch boot.img with Magisk.
+[*]Unlock the bootloader (wipes data).
+[*]Flash the patched boot image with heimdall.
+[*]Verify root and (optionally) install LSPosed.
+[/LIST]
+No Windows, no Odin, no VM required.
+
+[SIZE=4][B]Quick start (TL;DR)[/B][/SIZE]
+[CODE]
+1. Download firmware  →  samloader download -m SM-T220 -r INS ...
+2. Extract boot.img    →  tar -xf AP_*.tar.md5 boot.img.lz4 && lz4 -d boot.img.lz4 boot.img
+3. Patch with Magisk   →  Magisk app → Install → Select and Patch a File
+4. Unlock bootloader   →  Download Mode → Device Unlock (wipes data)
+5. Flash patched boot  →  heimdall flash --boot magisk_patched-*.img
+6. Factory data reset  →  Android Recovery → Factory data reset
+7. Verify root         →  adb shell su -c "id"  →  uid=0(root)
+[/CODE]
+
+[SIZE=4][B]Prerequisites[/B][/SIZE]
+[B]Hardware:[/B] SM-T220 (Wi-Fi), USB cable (data-capable), Linux PC with internet.
+
+[B]Software:[/B]
+[CODE]
+# Arch / Manjaro
+sudo pacman -S adb fastboot heimdall lz4 p7zip unzip
+# Debian/Ubuntu
+sudo apt install adb fastboot heimdall-flash lz4 p7zip-full unzip
+[/CODE]
+Additional: [B]samloader-rs[/B] (https://github.com/topjohnwu/samloader-rs/releases), [B]Magisk APK[/B] (https://github.com/topjohnwu/Magisk/releases).
+
+[SIZE=4][B]Device Info[/B][/SIZE]
+[TABLE]
+[TR][TD]Property[/TD][TD]Value[/TD][/TR]
+[TR][TD]Model[/TD][TD]SM-T220 (gta7litewifi)[/TD][/TR]
+[TR][TD]Android[/TD][TD]14[/TD][/TR]
+[TR][TD]Build / PDA[/TD][TD]T220XXSAEYE4[/TD][/TR]
+[TR][TD]Region / CSC[/TD][TD]INS (India)[/TD][/TR]
+[TR][TD]Bootloader binary[/TD][TD]A (10)[/TD][/TR]
+[TR][TD]OEM Unlock[/TD][TD]must be ON[/TD][/TR]
+[/TABLE]
+
+Check your own:
+[CODE]
+adb shell getprop ro.product.model
+adb shell getprop ro.build.display.id
+adb shell getprop ro.csc.sales_code
+adb shell getprop ro.boot.verifiedbootstate   # green = locked
+[/CODE]
+
+[SIZE=4][B]Warnings[/B][/SIZE]
+[LIST]
+[*][B]Data wipe:[/B] unlocking the bootloader erases all user data.
+[*][B]Knox:[/B] tripped permanently; Samsung Pay, Secure Folder and warranty affected.
+[*][B]Anti-rollback:[/B] bootloader binary ratchet — once on binary A (10), cannot flash older firmware.
+[*][B]Match builds:[/B] only flash a patched boot whose build matches your device's current build.
+[*][B]Battery:[/B] keep the tablet charged above 50% throughout.
+[/LIST]
+
+[SIZE=4][B]Phase 0 — Download Firmware[/B][/SIZE]
+[CODE]
+mkdir -p ~/a7lite/fw
+cd ~/a7lite/fw
+samloader check-update -m SM-T220 -r INS -a
+samloader download -m SM-T220 -r INS \
+  -v "T220XXSAEYE4/T220ODMAEYE4/T220XXSAEYE4/T220XXSAEYE4" \
+  -d ~/a7lite/fw -j 2
+[/CODE]
+⚠️ Do NOT download into /tmp on RAM-backed systems (tmpfs fills RAM → SIGBUS). Point -d at a real disk with ≥10 GB free.
+
+Verify:
+[CODE]
+7z t *.zip          # must end with "Everything is Ok"
+7z x *.zip -o fw_extracted "AP_*.tar.md5"
+[/CODE]
+
+[SIZE=4][B]Phase 1 — Extract boot.img[/B][/SIZE]
+[CODE]
+cd ~/a7lite/fw/fw_extracted
+tar -xf AP_*.tar.md5 boot.img.lz4
+lz4 -d boot.img.lz4 boot.img
+ls -lh boot.img
+[/CODE]
+
+[SIZE=4][B]Phase 2 — Patch boot.img with Magisk[/B][/SIZE]
+[LIST=1]
+[*]Install Magisk on the tablet: [CODE]adb install Magisk-v31.1.apk[/CODE]
+[*]Push boot.img: [CODE]adb push boot.img /sdcard/Download/boot.img[/CODE]
+[*]On tablet: Magisk → [B]Install[/B] → [B]Select and Patch a File[/B] → choose boot.img.
+[*]Pull patched image: [CODE]adb pull /sdcard/Download/magisk_patched-*.img ~/a7lite/[/CODE]
+[/LIST]
+
+[SIZE=4][B]Phase 3 — Unlock Bootloader[/B][/SIZE]
+⚠️ This wipes all data.
+[LIST=1]
+[*]Power off → hold Vol Up + Vol Down → plug USB → Download Mode screen.
+[*]Long-press Vol Up → [B]Device Unlock[/B] mode → press Vol Up to confirm. Data wiped; tablet reboots.
+[*]Complete minimal setup, re-enable Developer options + USB debugging.
+[/LIST]
+Verify:
+[CODE]
+adb shell getprop ro.boot.verifiedbootstate
+# → orange   (green = still locked)
+[/CODE]
+
+[SIZE=4][B]Phase 4 — Flash Patched Boot[/B][/SIZE]
+[B]4.1 Boot to Download Mode:[/B] Power off → Vol Up + Vol Down + USB → warning screen → press Vol Up to continue → "Downloading..." screen.
+[CODE]
+heimdall detect   # → Device detected
+[/CODE]
+
+[B]4.2 Flash:[/B] Partition names are case-sensitive; SM-T220 PIT uses lowercase [B]boot[/B], not BOOT.
+[CODE]
+heimdall print-pit --no-reboot > pit.txt
+grep "Partition Name" pit.txt | grep -iE "boot|recovery"
+# Partition Name: boot
+cd ~/a7lite
+heimdall flash --boot magisk_patched-*.img
+# ... boot upload successful → Rebooting device...
+[/CODE]
+If boot fails, also flash stock vbmeta:
+[CODE]
+heimdall flash --vbmeta fw/fw_extracted/vbmeta.img
+[/CODE]
+If handshake fails (Failed to send handshake / libusb error -7): force power-off, re-enter Download Mode fresh, flash immediately.
+
+[B]4.3 First boot after flashing (expected "corruption" screen):[/B]
+After a successful flash, tablet boots to Android Recovery with "Can't load Android system. Your data may be corrupt." — this is [B]normal[/B]. Select [B]Factory data reset[/B] → confirm. First boot after reset can take 10–15 minutes. Keep plugged in.
+
+[SIZE=4][B]Phase 5 — Verify Root[/B][/SIZE]
+[CODE]
+adb shell su -c "id"
+# Expected: uid=0(root) gid=0(root)
+[/CODE]
+Or open the Magisk app — it should show [B]Installed[/B] and a [B]Superuser[/B] tab. Root persists across reboots.
+
+[B]Granting root to apps (Magisk 31.1):[/B] Magisk 31.1 does NOT show an interactive pop-up for new apps. A fresh app has default policy [B]Deny[/B], so su requests are rejected silently (Magisk: su: request rejected (<uid>) in logcat) until granted manually:
+[LIST=1]
+[*]Open Magisk → [B]Superuser[/B] tab.
+[*]Tap [B]+[/B] (bottom-right).
+[*]Find the app (or [B]Shell[/B] for ADB root) and tap its row to toggle to granted (green).
+[*]Re-run the app's root check / [CODE]adb shell su -c id[/CODE].
+[/LIST]
+Verify with a root-checker app — it should report [B]Root Access Verified[/B].
+
+[SIZE=4][B]Verification checklist[/B][/SIZE]
+[LIST]
+[*][CODE]adb shell getprop ro.boot.verifiedbootstate[/CODE] → [B]orange[/B]
+[*]Magisk app shows [B]Installed 31.1 (31100)[/B] and [B]Ramdisk: Yes[/B]
+[*][CODE]adb shell su -c "id"[/CODE] → [B]uid=0(root)[/B]
+[*]Root-checker app reports [B]Root Access Verified[/B]
+[*]Root survives a reboot
+[/LIST]
+
+[SIZE=4][B]Optional — Remove Bootloader Warning[/B][/SIZE]
+Removes the red "custom OS / unlocked bootloader" screen on boot.
+[LIST=1]
+[*]Install Termux on the tablet.
+[*]Download [B]up_param.tar[/B] (from the XDA thread attachments) to /sdcard/Download/up_param.tar.
+[*]In Termux:
+[CODE]
+su
+cd /
+dd if=/storage/emulated/0/Download/up_param.tar of=/dev/block/platform/bootdevice/by-name/up_param
+[/CODE]
+[*]Reboot.
+[/LIST]
+
+[SIZE=4][B]Optional — LSPosed / Zygisk[/B][/SIZE]
+[LIST=1]
+[*]Magisk settings → enable [B]Zygisk[/B] and [B]Enforce DenyList[/B] → configure DenyList (add Google Play Services if needed). Reboot to apply.
+[*]Download LSPosed (zygisk build) from GitHub.
+[*]Copy the zip to the tablet.
+[*]Magisk → [B]Modules[/B] → [B]Install from storage[/B] → select the zip → [B]Reboot[/B].
+[*]Reboot; LSPosed adds a home-screen shortcut (package [B]org.lsposed.manager[/B]).
+[/LIST]
+Note: if the LSPosed Manager app does not appear after reboot, install it manually:
+[CODE]
+adb shell 'su -c "cat /data/adb/modules/zygisk_lsposed/manager.apk"' > manager.apk
+adb install manager.apk
+[/CODE]
+
+[SIZE=4][B]Recovery — Unbrick / Restore Stock[/B][/SIZE]
+[CODE]
+cd ~/a7lite/fw/fw_extracted
+heimdall flash \
+  --bl   BL_*.tar.md5 \
+  --ap   AP_*.tar.md5 \
+  --csc  CSC_*.tar.md5
+[/CODE]
+Alternatively, use Odin on a Windows PC with the same firmware.
+
+[SIZE=4][B]Field Notes (actual run)[/B][/SIZE]
+Real issues hit on SM-T220 / Android 14 / T220XXSAEYE4 (INS), and how they were resolved.
+[LIST=1]
+[*][B]/tmp was a 3.7 GB tmpfs.[/B] Downloading ~4.5 GB there filled RAM → SIGBUS / Killed. Fix: download to a real disk (/mnt/...) with plenty of free space.
+[*][B]First download truncated[/B] at 4.75 GB (7z t → "Unexpected end of archive"). Fix: --force re-download; always 7z t before extracting.
+[*][B]heimdall flash --BOOT failed[/B] — PIT uses lowercase boot. Fix: heimdall flash --boot ...
+[*][B]Failed to send handshake / libusb error -7[/B] — stale download-mode session. Fix: force power-off, re-enter Download Mode, flash immediately.
+[*][B]After flashing, device booted to Android Recovery[/B] ("Can't load Android system"). Expected on Samsung after patched boot; Factory data reset required.
+[*][B]First boot after reset is slow[/B] (10–15 min on this SoC). Keep plugged in.
+[*][B]adb showed unauthorized[/B] after each unlock/setup — accept the RSA "Allow USB debugging" prompt (tick "Always allow").
+[*][B]su requests rejected / root checker shows "no root"[/B] — Magisk 31.1 defaults new apps to Deny and does not pop up a prompt. Open Magisk → Superuser → + → tap the app (and Shell for ADB) to grant. After granting, adb shell su -c id returns uid=0(root) and the root checker reports "Root Access Verified".
+[*][B]Magisk logs[/B] are saved to /sdcard/Download/magisk_log_*.log when you tap "Save log" in the app; pull them with adb pull /sdcard/Download/magisk_log_*.log.
+[/LIST]
+
+[B]Files used in this run:[/B]
+[TABLE]
+[TR][TD]File[/TD][TD]Purpose[/TD][/TR]
+[TR][TD]fw/SM-T220_4_..._fac.zip[/TD][TD]Official firmware (4.5 GB)[/TD][/TR]
+[TR][TD]fw/extracted/AP_T220XXSAEYE4_...tar.md5[/TD][TD]Contains boot.img[/TD][/TR]
+[TR][TD]fw/extracted/boot.img[/TD][TD]Stock boot (32 MB)[/TD][/TR]
+[TR][TD]fw/extracted/vbmeta.img[/TD][TD]Stock vbmeta (7.3 KB)[/TD][/TR]
+[TR][TD]magisk_patched-31100_Uuo1o.img[/TD][TD]Patched boot flashed to boot[/TD][/TR]
+[/TABLE]
+
+[SIZE=4][B]Troubleshooting[/B][/SIZE]
+[TABLE]
+[TR][TD]Symptom[/TD][TD]Cause / Fix[/TD][/TR]
+[TR][TD]heimdall detect fails[/TD][TD]Device not in Download Mode, or missing udev rules. Run samloader fix-usb / install rules, replug.[/TD][/TR]
+[TR][TD]Failed to send handshake / libusb error -7[/TD][TD]Stale Download Mode session. Force power-off (hold Power 10–15 s), re-enter Download Mode fresh, flash immediately.[/TD][/TR]
+[TR][TD]Partition "BOOT" does not exist in PIT[/TD][TD]Partition names are lowercase on this device — use --boot, not --BOOT. Dump PIT with heimdall print-pit.[/TD][/TR]
+[TR][TD]adb devices empty[/TD][TD]USB debugging off, or unauthorized. Re-enable in Developer options; accept RSA prompt.[/TD][/TR]
+[TR][TD]OEM Unlock toggle missing[/TD][TD]Use the date trick (XDA Part I) or wait 24–48 h after factory reset + minimal setup + Wi-Fi registration.[/TD][/TR]
+[TR][TD]Download dies with SIGBUS / Killed[/TD][TD]Output dir is on a full tmpfs/RAM disk. Download to a real disk with ≥10 GB free.[/TD][/TR]
+[TR][TD]Zip extract fails with "Unexpected end of archive"[/TD][TD]Truncated download. Re-download with --force and verify with 7z t.[/TD][/TR]
+[TR][TD]Recovery: "Can't load Android system"[/TD][TD]Expected after flashing patched boot. Select Factory data reset, let it wipe and boot.[/TD][/TR]
+[TR][TD]Stuck on Samsung logo > 15 min[/TD][TD]First boot is slow; force-reboot once. If it repeats, flash stock vbmeta or full stock firmware.[/TD][/TR]
+[TR][TD]Magisk "not installed" after reboot[/TD][TD]Re-run Direct Install from Magisk app.[/TD][/TR]
+[TR][TD]fastboot devices empty[/TD][TD]Expected on Samsung; use Download Mode + heimdall/Odin, not fastboot.[/TD][/TR]
+[TR][TD]Root checker says "no root" / su: request rejected (<uid>)[/TD][TD]New apps default to Deny in Magisk 31.1. Open Magisk → Superuser → + → tap the app row to grant. Grant Shell too for ADB root.[/TD][/TR]
+[TR][TD]adb shell su -c id → "Permission denied"[/TD][TD]Shell (uid 2000) not granted. Magisk → Superuser → + → grant Shell (search "adb").[/TD][/TR]
+[/TABLE]
+
+[SIZE=4][B]FAQ[/B][/SIZE]
+[B]Q: Do I need to update to the latest firmware first?[/B]
+A: No. Root on your current build if a matching patched boot exists (or make your own). Updating first risks losing OEM Unlock and the binary ratchet.
+
+[B]Q: Should I log into Google/Samsung before rooting?[/B]
+A: No. Bootloader unlock wipes data; signing in first triggers FRP and can lock you out. Set up accounts after rooting.
+
+[B]Q: Can I re-lock the bootloader later?[/B]
+A: Not recommended — re-locking a rooted/modified device can brick it.
+
+[B]Q: Does this work on SM-T225 (LTE)?[/B]
+A: Yes, same process but use T225 firmware and a T225-matched patched boot.
+
+[B]Q: Is root persistent?[/B]
+A: Yes, root survives reboots. OTAs will break root — re-root after updating.
+
+[SIZE=4][B]Credits[/B][/SIZE]
+[B]Guides & tutorials:[/B]
+[LIST]
+[*]XDA: [TUTORIAL] How To Unlock & Root Tab A7 Lite T220/T225 — https://xdaforums.com/t/tutorial-how-to-unlock-root-tab-a7-lite-t220-t225-install-lsposed-magisk-mods.4406933/
+[*]XDA: [GUIDE] How to remove unlocked bootloader warning — https://xdaforums.com/t/guide-how-to-remove-unlocked-bootloader-warning-in-galaxy-tab-a7-lite.4400927/
+[*]Andrew Metzger's blog — https://andrew.mtz.gr/posts/rooting-galaxy-tab-a7-lite
+[*]Magisk Guide (unofficial) — https://magiskguide.com
+[*]DroidWin: remove bootloader warning on Samsung — https://droidwin.com/remove-unlock-bootloader-warning-on-samsung-galaxy-s20-s20-ultra-fe/
+[/LIST]
+
+[B]Tools:[/B]
+[LIST]
+[*]Magisk — https://github.com/topjohnwu/Magisk
+[*]samloader-rs — https://github.com/topjohnwu/samloader-rs
+[*]heimdall (grimler fork) — https://git.sr.ht/~grimler/Heimdall
+[*]lz4 — https://github.com/lz4/lz4
+[*]7-Zip — https://www.7-zip.org/
+[/LIST]
+
+[B]Frameworks & modules:[/B]
+[LIST]
+[*]LSPosed — https://github.com/LSPosed/LSPosed
+[*]ZygiskNext — https://github.com/LSPosed/ZygiskNext
+[*]samsung-mediatek/mediatek-clean-boot — https://github.com/samsung-mediatek/mediatek-clean-boot
+[/LIST]
+
+[B]Firmware sources:[/B]
+[LIST]
+[*]SamFw — https://samfw.com/firmware/SM-T220
+[*]SamSony — https://samsony.net/en/firmwares/samsung/SM-T220
+[*]Samsung official (via samloader-rs)
+[/LIST]
+
+[B]up_param.tar (bootloader warning removal):[/B]
+[LIST]
+[*]XDA attachment up_param-tar.5710083 — https://xdaforums.com/attachments/up_param-tar.5710083/
+[/LIST]
+
+[SIZE=3][B]License[/B][/SIZE]
+MIT — see the LICENSE file in the GitHub Gist: https://gist.github.com/athulkrishna2015/6b24d95acb855604c8e904623378d766
+
+---
+> [B]Note:[/B] This guide is provided as-is. Rooting is risky; proceed at your own risk.
